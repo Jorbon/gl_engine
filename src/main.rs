@@ -1,77 +1,62 @@
 #[macro_use]
 extern crate glium;
 
-mod structs;
 mod matfns;
 mod teapot;
 
 use matfns::{Matrix, normalize_vec3};
 
-use glium::{Surface, glutin::{event::{Event, WindowEvent, ElementState, VirtualKeyCode}, event_loop::ControlFlow, dpi::{PhysicalPosition, PhysicalSize}}};
-use structs::Vec2;
+use glium::{Surface, glutin::{event::{Event, WindowEvent, ElementState, VirtualKeyCode}, event_loop::{ControlFlow, EventLoop}, dpi::{PhysicalPosition, PhysicalSize, LogicalSize}, window::{CursorGrabMode, WindowBuilder}, ContextBuilder}, VertexBuffer, IndexBuffer, index::PrimitiveType, texture::{SrgbTexture2d, depth_texture2d::DepthTexture2d}, Program, DrawParameters, Depth, draw_parameters::DepthTest, BackfaceCullingMode, framebuffer::{SimpleFrameBuffer, MultiOutputFrameBuffer}, uniforms::{SamplerBehavior, Sampler, MinifySamplerFilter, MagnifySamplerFilter}, Display};
 
 
 
-fn _load_texture(display: &glium::Display, path: &str) -> glium::texture::SrgbTexture2d {
+fn _load_texture(display: &Display, path: &str) -> SrgbTexture2d {
 	let file = std::fs::File::open(path).unwrap();
 	let img_buffer = image::load(std::io::BufReader::new(file), image::ImageFormat::Png).unwrap().to_rgba8();
 	let dimensions = img_buffer.dimensions();
 	let img = glium::texture::RawImage2d::from_raw_rgba_reversed(&img_buffer.into_raw(), dimensions);
-	glium::texture::SrgbTexture2d::new(display, img).unwrap()
+	SrgbTexture2d::new(display, img).unwrap()
 }
 
+#[derive(Copy, Clone)]
+pub struct Vec2 { pub pos: [f32; 2] }
+implement_vertex!(Vec2, pos);
+
+
+
 fn main() {
-	let event_loop = glium::glutin::event_loop::EventLoop::new();
-	
-	let wb = glium::glutin::window::WindowBuilder::new()
-		.with_inner_size(glium::glutin::dpi::LogicalSize::new(1024.0, 768.0))
-		.with_title("Hello world");
-	
-	let cb = glium::glutin::ContextBuilder::new();
-	let display = glium::Display::new(wb, cb, &event_loop).unwrap();
-	let glium::glutin::dpi::PhysicalSize { width, height } = display.gl_window().window().inner_size();
-	
-	let vertex_buffer = glium::VertexBuffer::new(&display, &teapot::VERTICES).unwrap();
-	let normal_buffer = glium::VertexBuffer::new(&display, &teapot::NORMALS).unwrap();
-	let index_buffer = glium::IndexBuffer::new(&display, glium::index::PrimitiveType::TrianglesList, &teapot::INDICES).unwrap();
-	
-	let teapot_matrix = Matrix::new().scale(0.01);
+	let event_loop = EventLoop::new();
+	let wb = WindowBuilder::new().with_inner_size(LogicalSize::new(1024.0, 768.0));
+	let cb = ContextBuilder::new();
+	let display = Display::new(wb, cb, &event_loop).unwrap();
+	let PhysicalSize { width, height } = display.gl_window().window().inner_size();
 	
 	
-	let post_vertex_buffer = glium::VertexBuffer::new(&display, &[
-		Vec2 { pos: [-1.0, -1.0] },
-		Vec2 { pos: [ 1.0, -1.0] },
-		Vec2 { pos: [ 1.0,  1.0] },
-		Vec2 { pos: [-1.0,  1.0] }
-	]).unwrap();
-	let post_index_buffer = glium::IndexBuffer::new(&display, glium::index::PrimitiveType::TrianglesList, &[0u16, 1, 2, 0, 2, 3]).unwrap();
-	
-	let mut main_texture = glium::texture::SrgbTexture2d::empty(&display, width, height).unwrap();
-	let mut aux_texture = glium::texture::SrgbTexture2d::empty(&display, width, height).unwrap();
-	let mut depth_texture = glium::texture::depth_texture2d::DepthTexture2d::empty(&display, width, height).unwrap();
-	
-	let program = glium::Program::from_source(&display, include_str!("shaders/main_vert.glsl"), include_str!("shaders/main_frag.glsl"), None).unwrap();
-	let post_program = glium::Program::from_source(&display, include_str!("shaders/post_vert.glsl"), include_str!("shaders/post_effects_frag.glsl"), None).unwrap();
-	let _post_program = glium::Program::from_source(&display, include_str!("shaders/post_vert.glsl"), include_str!("shaders/post_frag.glsl"), None).unwrap();
-	let shadowmap_program = glium::Program::from_source(&display, include_str!("shaders/shadowmap_vert.glsl"), "#version 150\nvoid main() {}", None).unwrap();
+	let program = Program::from_source(&display, include_str!("shaders/main_vert.glsl"), include_str!("shaders/main_frag.glsl"), None).unwrap();
+	let post_program = Program::from_source(&display, include_str!("shaders/post_vert.glsl"), include_str!("shaders/post_effects_frag.glsl"), None).unwrap();
+	let _post_program = Program::from_source(&display, include_str!("shaders/post_vert.glsl"), include_str!("shaders/post_frag.glsl"), None).unwrap();
+	let shadowmap_program = Program::from_source(&display, include_str!("shaders/shadowmap_vert.glsl"), "#version 150\nvoid main() {}", None).unwrap();
 	
 	
-	let params = glium::DrawParameters {
-		depth: glium::Depth {
-			test: glium::draw_parameters::DepthTest::IfLess,
-			write: true,
-			.. Default::default()
-		},
-		backface_culling: glium::BackfaceCullingMode::CullCounterClockwise,
-		.. Default::default()
-	};
+	let vertex_buffer = VertexBuffer::new(&display, &teapot::VERTICES).unwrap();
+	let normal_buffer = VertexBuffer::new(&display, &teapot::NORMALS).unwrap();
+	let index_buffer = IndexBuffer::new(&display, PrimitiveType::TrianglesList, &teapot::INDICES).unwrap();
+	
+	let post_vertex_buffer = VertexBuffer::new(&display, &[Vec2 { pos: [-1.0, -1.0] }, Vec2 { pos: [ 1.0, -1.0] }, Vec2 { pos: [ 1.0,  1.0] }, Vec2 { pos: [-1.0,  1.0] }]).unwrap();
+	let post_index_buffer = IndexBuffer::new(&display, PrimitiveType::TrianglesList, &[0u16, 1, 2, 0, 2, 3]).unwrap();
+	
+	
+	let mut main_texture = SrgbTexture2d::empty(&display, width, height).unwrap();
+	let mut aux_texture = SrgbTexture2d::empty(&display, width, height).unwrap();
+	let mut depth_texture = DepthTexture2d::empty(&display, width, height).unwrap();
 	
 	
 	let shadowmap_resolution = 4096;
 	let shadowmap_size = 4.0f32;
 	let shadowmap_range = 10.0f32;
 	let shadowmap_tolerance = 0.001f32;
-	let shadowmap_texture = glium::texture::depth_texture2d::DepthTexture2d::empty(&display, shadowmap_resolution, shadowmap_resolution).unwrap();
+	let shadowmap_texture = DepthTexture2d::empty(&display, shadowmap_resolution, shadowmap_resolution).unwrap();
+	
 	
 	
 	
@@ -100,6 +85,11 @@ fn main() {
 	let mut z = 0.0f32;
 	let speed = 2.0;
 	
+	
+	let mut previous_frame_time = std::time::SystemTime::now();
+	let mut avg_frame_time = 0.0;
+	
+	
 	let fov = 75.0f32;
 	let f = 1.0 / (fov * 0.5 * std::f32::consts::PI / 180.0).tan();
 	
@@ -107,8 +97,6 @@ fn main() {
 	let znear = 0.1;
 	
 	
-	let mut previous_frame_time = std::time::SystemTime::now();
-	let mut avg_frame_time = 0.0;
 	
 	
 	event_loop.run(move |ev, _, control_flow| {
@@ -134,7 +122,7 @@ fn main() {
 							
 							VirtualKeyCode::Escape => if state && capture {
 								capture = false;
-								display.gl_window().window().set_cursor_grab(glium::glutin::window::CursorGrabMode::None).unwrap();
+								display.gl_window().window().set_cursor_grab(CursorGrabMode::None).unwrap();
 								display.gl_window().window().set_cursor_visible(true);
 							}
 							_ => ()
@@ -145,7 +133,7 @@ fn main() {
 				WindowEvent::MouseInput { device_id: _, state, button: _, .. } => {
 					if let ElementState::Pressed = state {
 						capture = true;
-						display.gl_window().window().set_cursor_grab(glium::glutin::window::CursorGrabMode::Confined).unwrap();
+						display.gl_window().window().set_cursor_grab(CursorGrabMode::Confined).unwrap();
 						display.gl_window().window().set_cursor_visible(false);
 					}
 				}
@@ -165,9 +153,9 @@ fn main() {
 					previous_mouse_pos = position;
 				}
 				WindowEvent::Resized(PhysicalSize { width, height }) => {
-					main_texture = glium::texture::SrgbTexture2d::empty(&display, width, height).unwrap();
-					aux_texture = glium::texture::SrgbTexture2d::empty(&display, width, height).unwrap();
-					depth_texture = glium::texture::depth_texture2d::DepthTexture2d::empty(&display, width, height).unwrap();
+					main_texture = SrgbTexture2d::empty(&display, width, height).unwrap();
+					aux_texture = SrgbTexture2d::empty(&display, width, height).unwrap();
+					depth_texture = DepthTexture2d::empty(&display, width, height).unwrap();
 				}
 				WindowEvent::CloseRequested => {
 					*control_flow = ControlFlow::Exit;
@@ -216,6 +204,8 @@ fn main() {
 				
 				
 				let light = normalize_vec3([z, y, -x]);
+				let teapot_matrix = Matrix::new().scale(0.01);
+				
 				
 				
 				let shadowmap_matrix = Matrix::new()
@@ -224,23 +214,23 @@ fn main() {
 					.rotate_x(f32::asin(-light[1]))
 					.scale_xyz(1.0, 1.0, 0.5 / shadowmap_range);
 				
-				let mut target = glium::framebuffer::SimpleFrameBuffer::depth_only(&display, &shadowmap_texture).unwrap();
+				let mut target = SimpleFrameBuffer::depth_only(&display, &shadowmap_texture).unwrap();
 				target.clear_depth(1.0);
 				target.draw(&vertex_buffer, &index_buffer, &shadowmap_program, &uniform! {
 					matrix: shadowmap_matrix.m,
 					model_matrix: teapot_matrix.m
-				}, &glium::DrawParameters {
-					depth: glium::Depth {
-						test: glium::draw_parameters::DepthTest::IfLess,
+				}, &DrawParameters {
+					depth: Depth {
+						test: DepthTest::IfLess,
 						write: true,
 						.. Default::default()
 					},
-					backface_culling: glium::BackfaceCullingMode::CullClockwise,
+					backface_culling: BackfaceCullingMode::CullClockwise,
 					.. Default::default()
 				}).unwrap();
 				
 				
-				let mut target = glium::framebuffer::MultiOutputFrameBuffer::with_depth_buffer(&display, [
+				let mut target = MultiOutputFrameBuffer::with_depth_buffer(&display, [
 					("main_color", &main_texture),
 					("aux_color", &aux_texture)
 				], &depth_texture).unwrap();
@@ -263,9 +253,9 @@ fn main() {
 						[0.0, 0.0, -(2.0*zfar*znear)/(zfar-znear), 0.0]
 					],
 					sm_matrix: shadowmap_matrix.m,
-					sm: glium::uniforms::Sampler(&shadowmap_texture, glium::uniforms::SamplerBehavior {
-						minify_filter: glium::uniforms::MinifySamplerFilter::Nearest,
-						magnify_filter: glium::uniforms::MagnifySamplerFilter::Nearest,
+					sm: Sampler(&shadowmap_texture, SamplerBehavior {
+						minify_filter: MinifySamplerFilter::Nearest,
+						magnify_filter: MagnifySamplerFilter::Nearest,
 						.. Default::default()
 					}),
 					sm_u: 1.0/(shadowmap_resolution as f32),
@@ -276,7 +266,15 @@ fn main() {
 				
 				
 				
-				target.draw((&vertex_buffer, &normal_buffer), &index_buffer, &program, &uniforms, &params).unwrap();
+				target.draw((&vertex_buffer, &normal_buffer), &index_buffer, &program, &uniforms, &DrawParameters {
+					depth: Depth {
+						test: DepthTest::IfLess,
+						write: true,
+						.. Default::default()
+					},
+					backface_culling: BackfaceCullingMode::CullCounterClockwise,
+					.. Default::default()
+				}).unwrap();
 				
 				
 				
@@ -288,7 +286,7 @@ fn main() {
 					main_tex: &main_texture,
 					aux_tex: &aux_texture,
 					depth_tex: &depth_texture,
-				}, &glium::DrawParameters::default()).unwrap();
+				}, &DrawParameters::default()).unwrap();
 				target.finish().unwrap();
 				
 				
