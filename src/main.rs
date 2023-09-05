@@ -10,12 +10,19 @@ use glium::{Surface, glutin::{event::{Event, WindowEvent, ElementState, VirtualK
 
 
 
-fn _load_texture(display: &Display, path: &str) -> SrgbTexture2d {
-	let file = std::fs::File::open(path).unwrap();
-	let img_buffer = image::load(std::io::BufReader::new(file), image::ImageFormat::Png).unwrap().to_rgba8();
-	let dimensions = img_buffer.dimensions();
-	let img = glium::texture::RawImage2d::from_raw_rgba_reversed(&img_buffer.into_raw(), dimensions);
-	SrgbTexture2d::new(display, img).unwrap()
+fn load_texture(display: &Display, path: &str) -> SrgbTexture2d {
+	let mut osstr = std::env::current_dir().unwrap().as_os_str().to_owned();
+	osstr.push("\\textures\\");
+	osstr.push(path);
+	match std::fs::File::open(&osstr) {
+		Ok(file) => {
+			let img_buffer = image::load(std::io::BufReader::new(file), image::ImageFormat::Png).unwrap().to_rgba8();
+			let dimensions = img_buffer.dimensions();
+			let img = glium::texture::RawImage2d::from_raw_rgba_reversed(&img_buffer.into_raw(), dimensions);
+			SrgbTexture2d::new(display, img).unwrap()
+		}
+		Err(e) => panic!("{} - Path: {}", e, osstr.to_str().unwrap())
+	}
 }
 
 #[derive(Copy, Clone)]
@@ -34,7 +41,7 @@ fn main() {
 	
 	let program = Program::from_source(&display, include_str!("shaders/main_vert.glsl"), include_str!("shaders/main_frag.glsl"), None).unwrap();
 	let post_program = Program::from_source(&display, include_str!("shaders/post_vert.glsl"), include_str!("shaders/post_effects_frag.glsl"), None).unwrap();
-	let _post_program = Program::from_source(&display, include_str!("shaders/post_vert.glsl"), include_str!("shaders/post_frag.glsl"), None).unwrap();
+	let post_program_default = Program::from_source(&display, include_str!("shaders/post_vert.glsl"), include_str!("shaders/post_default_frag.glsl"), None).unwrap();
 	let shadowmap_program = Program::from_source(&display, include_str!("shaders/shadowmap_vert.glsl"), "#version 150\nvoid main() {}", None).unwrap();
 	
 	
@@ -58,6 +65,9 @@ fn main() {
 	let shadowmap_texture = DepthTexture2d::empty(&display, shadowmap_resolution, shadowmap_resolution).unwrap();
 	
 	
+	
+	let texture = load_texture(&display, "material_pack\\Cobblestone_BaseColor.png");
+	let specular = load_texture(&display, "material_pack\\Cobblestone_Metallic-Cobblestone_Roughness@channels=G.png");
 	
 	
 	
@@ -84,6 +94,10 @@ fn main() {
 	let mut y = 0.0f32;
 	let mut z = 0.0f32;
 	let speed = 2.0;
+	
+	let mut d = 0.0f32;
+	
+	let mut do_post_process = false;
 	
 	
 	let mut previous_frame_time = std::time::SystemTime::now();
@@ -120,11 +134,17 @@ fn main() {
 							VirtualKeyCode::Space => space = state,
 							VirtualKeyCode::LShift => shift = state,
 							
+							VirtualKeyCode::P => if state { do_post_process = !do_post_process; }
+							VirtualKeyCode::Comma => if state { d -= 0.1; }
+							VirtualKeyCode::Period => if state { d += 0.1; }
+							VirtualKeyCode::Slash => if state { d = 0.0; }
+							
 							VirtualKeyCode::Escape => if state && capture {
 								capture = false;
 								display.gl_window().window().set_cursor_grab(CursorGrabMode::None).unwrap();
 								display.gl_window().window().set_cursor_visible(true);
 							}
+							
 							_ => ()
 						}
 						
@@ -203,9 +223,12 @@ fn main() {
 				if down { b -= lspeed }
 				
 				
+				
+				
+				
+				
 				let light = normalize_vec3([z, y, -x]);
 				let teapot_matrix = Matrix::new().scale(0.01);
-				
 				
 				
 				let shadowmap_matrix = Matrix::new()
@@ -254,14 +277,18 @@ fn main() {
 					],
 					sm_matrix: shadowmap_matrix.m,
 					sm: Sampler(&shadowmap_texture, SamplerBehavior {
-						minify_filter: MinifySamplerFilter::Nearest,
-						magnify_filter: MagnifySamplerFilter::Nearest,
+						minify_filter: MinifySamplerFilter::Linear,
+						magnify_filter: MagnifySamplerFilter::Linear,
+						depth_texture_comparison: Some(glium::uniforms::DepthTextureComparison::Greater),
 						.. Default::default()
 					}),
 					sm_u: 1.0/(shadowmap_resolution as f32),
 					sm_tol: 0.5 * shadowmap_tolerance / shadowmap_range,
 					cam: [x, y, z],
-					light: light
+					light: light,
+					tex: &texture,
+					spec_map: &specular,
+					d: d
 				};
 				
 				
@@ -280,7 +307,10 @@ fn main() {
 				
 				let mut target = display.draw();
 				target.clear_color_and_depth((0.0, 0.0, 0.0, 1.0), 1.0);
-				target.draw(&post_vertex_buffer, &post_index_buffer, &post_program, &uniform! {
+				target.draw(&post_vertex_buffer, &post_index_buffer, match do_post_process {
+					true => &post_program,
+					false => &post_program_default
+				}, &uniform! {
 					u: [1.0/(width as f32), 1.0/(height as f32)],
 					step_num: 3f32,
 					main_tex: &main_texture,
