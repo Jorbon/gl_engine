@@ -1,27 +1,20 @@
 #version 150
 
-in vec3 pos;
-in vec3 norm;
-in vec3 sm_pos;
-in vec2 uvf;
-//in vec3 cam_pos;
-//in vec3 cam_norm;
-out vec4 main_color;
-out vec4 aux_color;
+in vec3 world_position;
+in vec3 shadowmap_position;
+out vec4 color;
+out vec4 normal_color;
 
-uniform vec3 cam;
-uniform vec3 light;
-uniform sampler2D tex;
-uniform sampler2D spec_map;
+uniform vec3 camera_location;
+uniform vec3 light_direction;
+uniform sampler2DShadow shadowmap_texture;
+uniform vec2 shadowmap_resolution;
+uniform float shadowmap_tolerance;
+uniform float dummy;
 
-uniform sampler2DShadow sm;
-uniform float sm_u;
-uniform float sm_tol;
-uniform float d;
 
-const vec3 diff_color = vec3(1.0, 0.0, 0.0);
-const vec3 amb_color = vec3(0.0, 0.0, 0.0);
-const vec3 spec_color = vec3(1.0, 1.0, 1.0);
+const float ambient_level = 0.2;
+const vec3 specular_color = vec3(1.0, 1.0, 1.0);
 
 
 const vec2 sample_pos[16] = vec2[](
@@ -43,32 +36,32 @@ const vec2 sample_pos[16] = vec2[](
 	vec2( 0.14383161, -0.14100790)
 );
 
-float sample_shade_kernel_hardware(vec3 n) {
-	float bias = max(10.0 - 10.0 * dot(n, light), 1.0) * sm_tol;
+float sample_shade_kernel_hardware(vec3 normal) {
+	float bias = max(10.0 - 10.0 * dot(normal, light_direction), 1.0) * shadowmap_tolerance;
 	float shade = 0.0;
 	for (int i = 0; i < 4; i++) {
-		shade += texture(sm, vec3(sm_pos.xy + sample_pos[i]*sm_u, sm_pos.z - bias));
+		shade += texture(shadowmap_texture, vec3(shadowmap_position.xy + sample_pos[i] / shadowmap_resolution, shadowmap_position.z - bias));
 	}
 	if (shade >= 3.9) return 1.0;
 	for (int i = 4; i < sample_pos.length(); i++) {
-		shade += texture(sm, vec3(sm_pos.xy + sample_pos[i]*sm_u, sm_pos.z - bias));
+		shade += texture(shadowmap_texture, vec3(shadowmap_position.xy + sample_pos[i] / shadowmap_resolution, shadowmap_position.z - bias));
 	}
 	return shade / sample_pos.length();
 }
 
 
 void main() {
-	vec3 n = normalize(norm);
+	vec3 normal = normalize(cross(dFdx(world_position), dFdy(world_position)));
 	
-	float diff_brightness = max(dot(n, light), 0.0);
-	float spec_brightness = pow(max(dot(n, normalize(light + normalize(cam - pos))), 0.0), 16.0) * diff_brightness;
+	float diffuse_brightness = max(dot(normal, light_direction), 0.0);
+	float specular_brightness = pow(max(dot(normal, normalize(light_direction + normalize(camera_location - world_position))), 0.0), 16.0) * diffuse_brightness;
 	
-	float shade = sample_shade_kernel_hardware(n);
-	spec_brightness *= (1.0 - shade*1.5) * (1.0 - texture(spec_map, uvf).r) * 15.0;
-	diff_brightness *= 1.0 - shade;
+	float shade = sample_shade_kernel_hardware(normal);
+	specular_brightness *= max(1.0 - shade*1.5, 0.0);
+	diffuse_brightness *= 1.0 - shade;
 	
-	main_color = vec4(mix(amb_color, texture(tex, uvf).rgb, diff_brightness) + spec_color * spec_brightness, 1.0);
-	aux_color = vec4(n * 0.5 + 0.5, 1.0);
+	color = vec4(mix(ambient_level, 1.0, diffuse_brightness) * abs(normal) + specular_color * specular_brightness, 1.0);
+	normal_color = vec4(normal, 1.0);
 }
 
 
@@ -78,9 +71,9 @@ void main() {
 
 
 
-float sample_shade_hardware_smooth(vec3 n) {
-	float bias = max(10.0 - 10.0 * dot(n, light), 1.0) * sm_tol;
-	return texture(sm, vec3(sm_pos.xy, sm_pos.z - bias));
+float sample_shade_hardware_smooth(vec3 normal) {
+	float bias = max(10.0 * (1.0 - dot(normal, light_direction)), 1.0) * shadowmap_tolerance;
+	return texture(shadowmap_texture, vec3(shadowmap_position.xy, shadowmap_position.z - bias));
 }
 
 
@@ -89,30 +82,14 @@ float random(vec4 seed4){
 	return fract(sin(dot_product) * 43758.5453);
 }
 
-float sample_shade_noise(vec3 n) {
-	float bias = max(10.0 * (1.0 - dot(n, light)), 1.0) * sm_tol;
+float sample_shade_noise(vec3 normal) {
+	float bias = max(10.0 * (1.0 - dot(normal, light_direction)), 1.0) * shadowmap_tolerance;
 	int index = int(16.0 * random(gl_FragCoord.xyxy)) % 16;
-	return texture(sm, vec3(sm_pos.xy + sample_pos[index]*sm_u*3.0, sm_pos.z - bias));
+	return texture(shadowmap_texture, vec3(shadowmap_position.xy + sample_pos[index] * 3.0 / shadowmap_resolution, shadowmap_position.z - bias));
 }
 
 
 
-/*
-mat3 cotangent_frame(vec3 normal, vec3 position, vec2 uv) {
-    vec3 dpx = dFdx(position);
-    vec3 dpy = dFdy(position);
-    vec2 duvx = dFdx(uv);
-    vec2 duvy = dFdy(uv);
-
-    vec3 dpyperp = cross(dpy, normal);
-    vec3 dpxperp = cross(normal, dpx);
-    vec3 T = dpyperp * duvx.x + dpxperp * duvy.x;
-    vec3 B = dpyperp * duvx.y + dpxperp * duvy.y;
-
-    float invmax = inversesqrt(max(dot(T, T), dot(B, B)));
-    return mat3(-T * invmax, -B * invmax, normal);
-}
-*/
 
 /*
 float sample_shade_plain(vec3 n) {
