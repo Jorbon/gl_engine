@@ -99,8 +99,8 @@ impl Mat4 {
 		])
 	}
 	
-	pub fn translate(&self, dx: f32, dy: f32, dz: f32) -> Mat4 {
-		Mat4([self.0[0], self.0[1], self.0[2], [self.0[3][0] + dx, self.0[3][1] + dy, self.0[3][2] + dz, self.0[3][3]]])
+	pub fn translate(&self, dp: Vec3) -> Mat4 {
+		Mat4([self.0[0], self.0[1], self.0[2], [self.0[3][0] + dp.0, self.0[3][1] + dp.1, self.0[3][2] + dp.2, self.0[3][3]]])
 	}
 	
 	pub fn scale(&self, s: f32) -> Mat4 {
