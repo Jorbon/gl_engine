@@ -54,8 +54,8 @@ pub fn get_latest_value<T>(rx: &Receiver<T>) -> Option<T> {
 }
 
 
-static TARGET_TPS: f32 = 10.0;
-
+static TARGET_TPS: f32 = 5.0;
+static TIMING_UPDATE_RATE: f32 = 1.0;
 
 
 
@@ -109,6 +109,7 @@ fn main() {
 	
 	let mut previous_frame_time = Instant::now();
 	let mut avg_frame_time = 0.0;
+	let mut avg_frame_process_time = 0.0;
 	let mut avg_tick_time = 0.0;
 	let mut avg_tick_process_time = 0.0;
 	
@@ -158,7 +159,7 @@ fn main() {
 				physics_tx.send(objects.iter().map(Object::get_dynamic_state).collect::<Vec<_>>()).unwrap();
 			}
 			
-			let process_time = Instant::now().duration_since(start_time);
+			let process_time = start_time.elapsed();
 			
 			tps_tx.send((process_time.as_secs_f32(), tick_dt)).unwrap();
 			
@@ -247,15 +248,12 @@ fn main() {
 				display.gl_window().window().request_redraw();
 			}
 			Event::RedrawRequested(_) => {
-				let dt = {
-					let now = Instant::now();
-					let dt = now.duration_since(previous_frame_time).as_secs_f32();
-					previous_frame_time = now;
-					dt
-				};
+				let start_time = Instant::now();
+				let dt = start_time.duration_since(previous_frame_time).as_secs_f32();
+				previous_frame_time = start_time;
 				
-				if dt < 1.0 {
-					avg_frame_time += 2.0 * dt * (dt - avg_frame_time);
+				if dt < 1.0 / TIMING_UPDATE_RATE {
+					avg_frame_time += TIMING_UPDATE_RATE * dt * (dt - avg_frame_time);
 				} else {
 					avg_frame_time = dt;
 				}
@@ -263,15 +261,20 @@ fn main() {
 				loop {
 					match tps_rx.try_recv() {
 						Ok((tick_process_time, tick_dt)) => {
-							avg_tick_time += 2.0 * tick_dt * (tick_dt - avg_tick_time);
-							avg_tick_process_time += 2.0 * tick_dt * (tick_process_time - avg_tick_process_time);
+							if tick_dt < 1.0 / TIMING_UPDATE_RATE {
+								avg_tick_time += TIMING_UPDATE_RATE * tick_dt * (tick_dt - avg_tick_time);
+								avg_tick_process_time += TIMING_UPDATE_RATE * tick_dt * (tick_process_time - avg_tick_process_time);
+							} else {
+								avg_tick_time = tick_dt;
+								avg_tick_process_time = tick_process_time;
+							}
 						}
 						Err(TryRecvError::Empty) => break,
 						Err(TryRecvError::Disconnected) => panic!()
 					}
 				}
 				
-				display.gl_window().window().set_title(&format!("3d things: {} fps, {} tps, {:.3} mspt", (1.0 / avg_frame_time) as u32, (1.0 / avg_tick_time) as u32, 1000.0 * avg_tick_process_time));
+				display.gl_window().window().set_title(&format!("3d things: {} fps, {:.3} mspf, {} tps, {:.3} mspt", (1.0 / avg_frame_time) as u32, 1000.0 * avg_frame_process_time, (1.0 / avg_tick_time) as u32, 1000.0 * avg_tick_process_time));
 				
 				
 				let asin = camera.horizontal_angle.sin();
@@ -315,6 +318,14 @@ fn main() {
 				
 				
 				renderer.render(&display, &camera, &objects, &vertex_buffers, &index_buffers, do_post_process, show_shadowmap, dummy);
+				
+				
+				let process_time = start_time.elapsed().as_secs_f32();
+				if dt < 1.0 / TIMING_UPDATE_RATE {
+					avg_frame_process_time += TIMING_UPDATE_RATE * dt * (process_time - avg_frame_process_time);
+				} else {
+					avg_frame_process_time = process_time;
+				}
 				
 			}
 			_ => ()
