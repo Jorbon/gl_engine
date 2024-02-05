@@ -16,6 +16,16 @@ uniform sampler2D normals_buffer;
 uniform sampler2D depth_buffer;
 
 
+float get_actual_depth(float buffer_depth) {
+	return z_far * z_near / (z_far - buffer_depth * (z_far - z_near));
+}
+
+float get_depth_precision_density(float buffer_depth) {
+	float actual_depth = get_actual_depth(buffer_depth);
+	return z_far * z_near / ((z_far - z_near) * actual_depth * actual_depth);
+}
+
+
 const vec3 kernel[8] = vec3[](
 	vec3(-1.0,  0.0, 2.0),
 	vec3( 1.0,  0.0, 2.0),
@@ -44,8 +54,7 @@ void main() {
 	float dgy = points[2].a + points[4].a + points[5].a - points[3].a - points[6].a - points[7].a;
 	
 	float buffer_depth = texture(depth_buffer, screen_position).r;
-	float actual_depth = z_far * z_near / (z_far - buffer_depth * (z_far - z_near));
-	float buffer_depth_precision_density = z_far * z_near / ((z_far - z_near) * actual_depth * actual_depth);
+	float buffer_depth_precision_density = get_depth_precision_density(buffer_depth);
 	float depth_gradient = (dgx*dgx + dgy*dgy) / (buffer_depth_precision_density * buffer_depth_precision_density);
 	
 	float total_gradient = clamp(normal_gradient * normals_outline_weight + depth_gradient * depth_outline_weight, 0.0, 1.0);
@@ -57,5 +66,6 @@ void main() {
 	vec3 posterized_color = round(outlined_color * step_num + dither_offset) / step_num;
 	color = vec4(posterized_color, 1.0);
 }
+
 
 

@@ -1,4 +1,4 @@
-use glium::{framebuffer::{MultiOutputFrameBuffer, SimpleFrameBuffer}, index::PrimitiveType, texture::{DepthTexture2d, RawImage2d, SrgbTexture2d}, uniforms::{MagnifySamplerFilter, MinifySamplerFilter, Sampler, SamplerBehavior, SamplerWrapFunction}, BackfaceCullingMode, Depth, DepthTest, Display, DrawParameters, IndexBuffer, Program, Surface, Texture2d, VertexBuffer};
+use glium::{framebuffer::{MultiOutputFrameBuffer, SimpleFrameBuffer}, index::PrimitiveType, texture::{DepthTexture2d, RawImage2d, SrgbTexture2d}, uniform, uniforms::{MagnifySamplerFilter, MinifySamplerFilter, Sampler, SamplerBehavior, SamplerWrapFunction}, BackfaceCullingMode, Depth, DepthTest, Display, DrawParameters, IndexBuffer, Program, Surface, Texture2d, VertexBuffer};
 
 use crate::{math_structs::{Mat4, Vec2, Vec3}, object::Object, Camera};
 

@@ -1,9 +1,9 @@
 use crate::{math_structs::{Mat4, Vec3}, object::Object};
 
-pub fn run(objects: &mut [Object], dt: f32, count: u32) {
+pub fn run(objects: &mut [Object], dt: f32) {
 	let mut collision = None;
 	let mut dt_remaining = dt;
-
+	
 	while dt_remaining > 0.0 {
 		
 		let new_transforms = (0..objects.len()).map(|i| objects[i].future_transform(dt_remaining)).collect::<Vec<Mat4>>();
@@ -18,8 +18,6 @@ pub fn run(objects: &mut [Object], dt: f32, count: u32) {
 					let (this_a, next_a) = transformed_vertices[j][a_index as usize];
 					let (this_b, next_b) = transformed_vertices[j][b_index as usize];
 					let (this_c, next_c) = transformed_vertices[j][c_index as usize];
-					
-					
 					
 					
 					let p0 = this_v - this_a;
@@ -170,6 +168,9 @@ pub fn run(objects: &mut [Object], dt: f32, count: u32) {
 
 
 fn collide(objects: &mut [Object], i: usize, j: usize, p: Vec3, n: Vec3) {
+	
+	let v1 = objects[i].velocity + objects[i].angular_velocity.cross(p - objects[i].transform.get_position());
+	let v2 = objects[j].velocity + objects[j].angular_velocity.cross(p - objects[j].transform.get_position());
 	
 	objects[i].velocity = -objects[i].velocity;
 	

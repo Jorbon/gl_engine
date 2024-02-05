@@ -1,17 +1,15 @@
-#[macro_use]
 extern crate glium;
 
 mod math_structs;
 mod object;
 mod physics;
 mod render;
+mod scene;
 
 use math_structs::{Mat4, Vec2, Vec3};
 
 use glium::{glutin::{event::{Event, WindowEvent, ElementState, VirtualKeyCode}, event_loop::{ControlFlow, EventLoop}, dpi::{PhysicalPosition, PhysicalSize, LogicalSize}, window::{CursorGrabMode, WindowBuilder}, ContextBuilder}, vertex::Attribute, Display, Vertex, VertexFormat};
-use object::Object;
 use render::Renderer;
-
 
 
 
@@ -47,60 +45,13 @@ impl Camera {
 fn main() {
 	let event_loop = EventLoop::new();
 	let wb = WindowBuilder::new().with_inner_size(LogicalSize::new(1024.0, 768.0));
-	let cb = ContextBuilder::new();
+	let cb = ContextBuilder::new().with_vsync(true);
 	let display = Display::new(wb, cb, &event_loop).unwrap();
 	let PhysicalSize { width, height } = display.gl_window().window().inner_size();
 	
+	let mut objects = crate::scene::initialize_scene(&display);
 	
-	
-	
-	let mut o1 = Object::new(&display, &[
-			Vec3(-1.0, -1.0, -1.0),
-			Vec3(-1.0, -1.0,  1.0),
-			Vec3(-1.0,  1.0, -1.0),
-			Vec3(-1.0,  1.0,  1.0),
-			Vec3( 1.0, -1.0, -1.0),
-			Vec3( 1.0, -1.0,  1.0),
-			Vec3( 1.0,  1.0, -1.0),
-			Vec3( 1.0,  1.0,  1.0),
-		], &[
-			(0, 2, 3),
-			(0, 3, 1),
-			(0, 1, 5),
-			(0, 5, 4),
-			(0, 4, 6),
-			(0, 6, 2),
-			(7, 2, 6),
-			(7, 6, 4),
-			(7, 4, 5),
-			(7, 5, 1),
-			(7, 1, 3),
-			(7, 3, 2),
-		]
-	);
-	
-	o1.transform = o1.transform.rotate_x(0.5).rotate_z(0.5).translate(Vec3(0.0, 10.0, 0.0));
-	
-	
-	let floor = Object::new(&display, &[
-		Vec3(-10.0, 0.0, -10.0),
-		Vec3(-10.0, 0.0,  10.0),
-		Vec3( 10.0, 0.0, -10.0),
-		Vec3( 10.0, 0.0,  10.0),
-	], &[
-		(0, 2, 3),
-		(0, 3, 1)
-	]);
-	
-	//o1.angular_velocity = Vec3(0.2, 0.3, 0.5);
-	//floor.angular_velocity = Vec3(-0.05, 0.1, -0.02);
-	
-	
-	let mut objects = vec![o1, floor];
-	
-	
-	
-	
+	// continuous input states
 	let mut up = false;
 	let mut down = false;
 	let mut left = false;
@@ -112,10 +63,13 @@ fn main() {
 	let mut space = false;
 	let mut shift = false;
 	
-	let mut run = false;
-	let mut capture = false;
-	let mut previous_mouse_pos = PhysicalPosition::<f64>::new(0.0, 0.0);
 	
+	let mut run = true;
+	let mut capture = false;
+	let mut do_post_process = true;
+	let mut show_shadowmap = false;
+	
+	let mut previous_mouse_pos = PhysicalPosition::<f64>::new(0.0, 0.0);
 	
 	
 	let mut camera = Camera {
@@ -124,16 +78,15 @@ fn main() {
 		vertical_angle: 0.0
 	};
 	
-	let lspeed = 0.00025;
-	let speed = 2.0;
+	let look_sensitivity = 0.00025;
+	let movement_speed = 4.0;
+	
 	
 	let g = 9.8;
 	
 	
 	let mut dummy = 0.0f32;
 	
-	let do_post_process = true;
-	let mut show_shadowmap = false;
 	
 	
 	let mut previous_frame_time = std::time::SystemTime::now();
@@ -142,7 +95,6 @@ fn main() {
 	let mut renderer = Renderer::new(&display, width, height, 75.0, 0.01, 1000.0);
 	
 	
-	let mut count = 0;
 	
 	
 	
@@ -169,14 +121,13 @@ fn main() {
 							
 							VirtualKeyCode::P => if state { run = !run; }
 							VirtualKeyCode::M => if state { show_shadowmap = !show_shadowmap; }
+							VirtualKeyCode::N => if state { do_post_process = !do_post_process; }
 							VirtualKeyCode::Comma => if state { dummy -= 0.1; }
 							VirtualKeyCode::Period => if state { dummy += 0.1; }
 							VirtualKeyCode::Slash => if state { dummy = 0.0; }
 							
 							VirtualKeyCode::R => if state {
-								objects[0].transform = objects[0].transform.set_position(Vec3(0.0, 10.0, 0.0));
-								objects[0].velocity = Vec3(0.0, 0.0, 0.0);
-								objects[0].angular_velocity = Vec3(0.0, 0.1, 0.2);
+								objects = crate::scene::initialize_scene(&display);
 							}
 							
 							VirtualKeyCode::Escape => if state && capture {
@@ -205,8 +156,8 @@ fn main() {
 						let size = display.gl_window().window().inner_size();
 						let center_x = size.width / 2;
 						let center_y = size.height / 2;
-						camera.horizontal_angle += (position.x as f32 - center_x as f32) * lspeed;
-						camera.vertical_angle -= (position.y as f32 - center_y as f32) * lspeed;
+						camera.horizontal_angle += (position.x as f32 - center_x as f32) * look_sensitivity;
+						camera.vertical_angle -= (position.y as f32 - center_y as f32) * look_sensitivity;
 						display.gl_window().window().set_cursor_position(PhysicalPosition::new(center_x, center_y)).unwrap();
 					}
 					
@@ -232,7 +183,7 @@ fn main() {
 				};
 				
 				if dt < 1.0 {
-					avg_frame_time += dt * (dt - avg_frame_time);
+					avg_frame_time += 5.0 * dt * (dt - avg_frame_time);
 				} else {
 					avg_frame_time = dt;
 				}
@@ -251,29 +202,28 @@ fn main() {
 				if shift { mov.1 -= 1.0 }
 				if mov.length_squared() > 0.0 {
 					mov = mov.normalize();
-					let ds = dt * speed;
+					let ds = dt * movement_speed;
 					camera.position.0 += (mov.0*acos - mov.2*asin)*ds;
 					camera.position.1 += mov.1*ds;
 					camera.position.2 += (mov.2*acos + mov.0*asin)*ds;
 				}
 				
-				if right { camera.horizontal_angle += lspeed }
-				if left { camera.horizontal_angle -= lspeed }
-				if up { camera.vertical_angle += lspeed }
-				if down { camera.vertical_angle -= lspeed }
+				if right { camera.horizontal_angle += look_sensitivity }
+				if left { camera.horizontal_angle -= look_sensitivity }
+				if up { camera.vertical_angle += look_sensitivity }
+				if down { camera.vertical_angle -= look_sensitivity }
 				
 				
 				
 				if run {
-					let dt = 0.02;//f32::min(dt, 0.02);
+					let dt = 1.0 / 60.0;//f32::min(dt, 0.02);
 					
 					for i in 0..objects.len() {
 						objects[i].velocity += Vec3(0.0, -g * dt, 0.0);
 					}
 					objects[1].velocity = Vec3(0.0, 0.0, 0.0);
 					
-					crate::physics::run(&mut objects, dt, count);
-					count += 1;
+					crate::physics::run(&mut objects, dt);
 				}
 				
 				
