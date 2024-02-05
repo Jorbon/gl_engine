@@ -54,7 +54,7 @@ pub struct Renderer {
 	pub normals_buffer: SrgbTexture2d,
 	pub depth_buffer: DepthTexture2d,
 	pub shadowmap: ShadowMap,
-	pub bayer16_texture: Texture2d,
+	pub bayer_texture: Texture2d,
 	pub fov: f32,
 	pub f: f32,
 	pub z_far: f32,
@@ -97,7 +97,7 @@ impl Renderer {
 				transform: Mat4::identity(),
 				texture: DepthTexture2d::empty(display, 4096, 4096).unwrap()
 			},
-			bayer16_texture: {
+			bayer_texture: {
 				let img_buffer = image::load_from_memory_with_format(include_bytes!("bayer16.png"), image::ImageFormat::Png).unwrap().to_rgba8();
 				let dimensions = img_buffer.dimensions();
 				Texture2d::new(display, RawImage2d::from_raw_rgba_reversed(&img_buffer.into_raw(), dimensions)).unwrap()
@@ -206,12 +206,13 @@ impl Renderer {
 				outline_color: (0.0f32, 0.0f32, 0.0f32, 1.0f32),
 				z_far: self.z_far,
 				z_near: self.z_near,
-				bayer16_texture: Sampler(&self.bayer16_texture, SamplerBehavior {
+				bayer_texture: Sampler(&self.bayer_texture, SamplerBehavior {
 					minify_filter: MinifySamplerFilter::Nearest,
 					magnify_filter: MagnifySamplerFilter::Nearest,
 					wrap_function: (SamplerWrapFunction::Repeat, SamplerWrapFunction::Repeat, SamplerWrapFunction::Repeat),
 					.. Default::default()
 				}),
+				bayer_size: 32.0f32,
 				main_buffer: &self.main_buffer,
 				normals_buffer: &self.normals_buffer,
 				depth_buffer: &self.depth_buffer,

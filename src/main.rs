@@ -6,7 +6,7 @@ mod physics;
 mod render;
 mod scene;
 
-use std::{sync::mpsc::{self, TryRecvError}, thread, time::{Duration, Instant}};
+use std::{sync::mpsc::{self, Receiver, TryRecvError}, time::{Duration, Instant}};
 
 use math_structs::{Mat4, Vec2, Vec3};
 
@@ -41,7 +41,21 @@ impl Camera {
 	}
 }
 
-static TARGET_TPS: f32 = 60.0;
+pub fn get_latest_value<T>(rx: &Receiver<T>) -> Option<T> {
+	let mut value = None;
+	loop {
+		match rx.try_recv() {
+			Ok(v) => value = Some(v),
+			Err(TryRecvError::Empty) => break,
+			Err(TryRecvError::Disconnected) => std::process::exit(0)
+		}
+	}
+	value
+}
+
+
+static TARGET_TPS: f32 = 10.0;
+
 
 
 
@@ -93,8 +107,10 @@ fn main() {
 	
 	
 	
-	let mut previous_frame_time = std::time::Instant::now();
+	let mut previous_frame_time = Instant::now();
 	let mut avg_frame_time = 0.0;
+	let mut avg_tick_time = 0.0;
+	let mut avg_tick_process_time = 0.0;
 	
 	let mut renderer = Renderer::new(&display, width, height, 75.0, 0.01, 1000.0);
 	
@@ -103,33 +119,32 @@ fn main() {
 	
 	let (physics_tx, main_rx) = mpsc::channel::<Vec<(Mat4, Vec3, Vec3)>>();
 	let (main_tx, physics_rx) = mpsc::channel::<Vec<(Mat4, Vec3, Vec3)>>();
+	let (tps_tx, tps_rx) = mpsc::channel::<(f32, f32)>();
+	let (control_tx, control_rx) = mpsc::channel::<bool>();
 	
 	let (mut objects, vertex_buffers, index_buffers) = crate::scene::initialize_scene(&display);
 	let objects_physics = objects.clone();
 	
 	let _physics_thread = std::thread::spawn(move || {
 		let mut objects = objects_physics;
+		let mut previous_tick_time = Instant::now();
 		
 		loop {
 			let start_time = Instant::now();
+			let tick_dt = start_time.duration_since(previous_tick_time).as_secs_f32()	;
+			previous_tick_time = start_time;
+			
+			if let Some(dynamic_states) = get_latest_value(&physics_rx) {
+				for i in 0..objects.len() {
+					objects[i].set_dynamic_state(dynamic_states[i]);
+				}
+			}
+			
+			if let Some(control) = get_latest_value(&control_rx) {
+				run = control;
+			}
 			
 			if run {
-				let mut dynamic_states = None;
-				loop {
-					match physics_rx.try_recv() {
-						Ok(states) => dynamic_states = Some(states),
-						Err(TryRecvError::Empty) => break,
-						Err(TryRecvError::Disconnected) => panic!()
-					}
-				}
-				
-				if let Some(dynamic_states) = dynamic_states {
-					for i in 0..objects.len() {
-						objects[i].set_dynamic_state(dynamic_states[i]);
-					}
-				}
-				
-				
 				let dt = 1.0 / TARGET_TPS;
 				
 				for i in 0..objects.len() {
@@ -143,7 +158,12 @@ fn main() {
 				physics_tx.send(objects.iter().map(Object::get_dynamic_state).collect::<Vec<_>>()).unwrap();
 			}
 			
-			thread::sleep(Duration::from_secs_f32(TARGET_TPS).checked_sub(Instant::now().duration_since(start_time)).unwrap_or(Duration::ZERO));
+			let process_time = Instant::now().duration_since(start_time);
+			
+			tps_tx.send((process_time.as_secs_f32(), tick_dt)).unwrap();
+			
+			let sleep_duration = Duration::from_secs_f32(1.0 / TARGET_TPS).checked_sub(process_time).unwrap_or(Duration::ZERO);
+			spin_sleep::sleep(sleep_duration);
 		}
 	});
 	
@@ -170,7 +190,7 @@ fn main() {
 							VirtualKeyCode::Space => space = state,
 							VirtualKeyCode::LShift => shift = state,
 							
-							VirtualKeyCode::P => if state { run = !run; }
+							VirtualKeyCode::P => if state { run = !run; control_tx.send(run).unwrap(); }
 							VirtualKeyCode::M => if state { show_shadowmap = !show_shadowmap; }
 							VirtualKeyCode::N => if state { do_post_process = !do_post_process; }
 							VirtualKeyCode::Comma => if state { dummy -= 0.1; }
@@ -228,19 +248,30 @@ fn main() {
 			}
 			Event::RedrawRequested(_) => {
 				let dt = {
-					let now = std::time::Instant::now();
+					let now = Instant::now();
 					let dt = now.duration_since(previous_frame_time).as_secs_f32();
 					previous_frame_time = now;
 					dt
 				};
 				
 				if dt < 1.0 {
-					avg_frame_time += 5.0 * dt * (dt - avg_frame_time);
+					avg_frame_time += 2.0 * dt * (dt - avg_frame_time);
 				} else {
 					avg_frame_time = dt;
 				}
 				
-				display.gl_window().window().set_title(&format!("3d things: {} fps", (1.0 / avg_frame_time) as u32));
+				loop {
+					match tps_rx.try_recv() {
+						Ok((tick_process_time, tick_dt)) => {
+							avg_tick_time += 2.0 * tick_dt * (tick_dt - avg_tick_time);
+							avg_tick_process_time += 2.0 * tick_dt * (tick_process_time - avg_tick_process_time);
+						}
+						Err(TryRecvError::Empty) => break,
+						Err(TryRecvError::Disconnected) => panic!()
+					}
+				}
+				
+				display.gl_window().window().set_title(&format!("3d things: {} fps, {} tps, {:.3} mspt", (1.0 / avg_frame_time) as u32, (1.0 / avg_tick_time) as u32, 1000.0 * avg_tick_process_time));
 				
 				
 				let asin = camera.horizontal_angle.sin();

@@ -10,7 +10,8 @@ uniform float depth_outline_weight;
 uniform vec4 outline_color;
 uniform float z_far;
 uniform float z_near;
-uniform sampler2D bayer16_texture;
+uniform sampler2D bayer_texture;
+uniform float bayer_size;
 uniform sampler2D main_buffer;
 uniform sampler2D normals_buffer;
 uniform sampler2D depth_buffer;
@@ -62,7 +63,7 @@ void main() {
 	
 	vec3 main_color = texture(main_buffer, screen_position).rgb;
 	vec3 outlined_color = mix(main_color, outline_color.rgb, total_gradient * outline_color.a);
-	vec3 dither_offset = (texture(bayer16_texture, gl_FragCoord.xy / 16.0).rgb - 0.5);
+	vec3 dither_offset = (texture(bayer_texture, gl_FragCoord.xy / bayer_size).rgb - 0.5);
 	vec3 posterized_color = round(outlined_color * step_num + dither_offset) / step_num;
 	color = vec4(posterized_color, 1.0);
 }
