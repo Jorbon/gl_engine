@@ -1,10 +1,10 @@
-use glium::Display;
+use glium::{Display, IndexBuffer, VertexBuffer};
 
 use crate::{math_structs::Vec3, object::Object};
 
 
-pub fn initialize_scene(display: &Display) -> Vec<Object> {
-	let mut cube = Object::new(&display, &[
+pub fn initialize_scene(display: &Display) -> (Vec<Object>, Vec<VertexBuffer<Vec3>>, Vec<IndexBuffer<u16>>) {
+	let (mut cube, cube_vbuf, cube_ibuf) = Object::new_with_buffers(&display, &[
 		Vec3(-1.0, -1.0, -1.0),
 		Vec3(-1.0, -1.0,  1.0),
 		Vec3(-1.0,  1.0, -1.0),
@@ -28,7 +28,7 @@ pub fn initialize_scene(display: &Display) -> Vec<Object> {
 		(7, 3, 2),
 	]);
 	
-	let floor = Object::new(&display, &[
+	let (floor, floor_vbuf, floor_ibuf) = Object::new_with_buffers(&display, &[
 		Vec3(-10.0, 0.0, -10.0),
 		Vec3(-10.0, 0.0,  10.0),
 		Vec3( 10.0, 0.0, -10.0),
@@ -44,7 +44,11 @@ pub fn initialize_scene(display: &Display) -> Vec<Object> {
 	//floor.angular_velocity = Vec3(-0.05, 0.1, -0.02);
 
 
-	vec![cube, floor]
+	(
+		vec![cube, floor],
+		vec![cube_vbuf, floor_vbuf],
+		vec![cube_ibuf, floor_ibuf]
+	)
 }
 
 

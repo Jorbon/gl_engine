@@ -6,9 +6,12 @@ mod physics;
 mod render;
 mod scene;
 
+use std::{sync::mpsc::{self, TryRecvError}, thread, time::{Duration, Instant}};
+
 use math_structs::{Mat4, Vec2, Vec3};
 
 use glium::{glutin::{event::{Event, WindowEvent, ElementState, VirtualKeyCode}, event_loop::{ControlFlow, EventLoop}, dpi::{PhysicalPosition, PhysicalSize, LogicalSize}, window::{CursorGrabMode, WindowBuilder}, ContextBuilder}, vertex::Attribute, Display, Vertex, VertexFormat};
+use object::Object;
 use render::Renderer;
 
 
@@ -38,6 +41,9 @@ impl Camera {
 	}
 }
 
+static TARGET_TPS: f32 = 60.0;
+
+
 
 
 
@@ -48,8 +54,6 @@ fn main() {
 	let cb = ContextBuilder::new().with_vsync(true);
 	let display = Display::new(wb, cb, &event_loop).unwrap();
 	let PhysicalSize { width, height } = display.gl_window().window().inner_size();
-	
-	let mut objects = crate::scene::initialize_scene(&display);
 	
 	// continuous input states
 	let mut up = false;
@@ -89,12 +93,59 @@ fn main() {
 	
 	
 	
-	let mut previous_frame_time = std::time::SystemTime::now();
+	let mut previous_frame_time = std::time::Instant::now();
 	let mut avg_frame_time = 0.0;
 	
 	let mut renderer = Renderer::new(&display, width, height, 75.0, 0.01, 1000.0);
 	
 	
+	
+	
+	let (physics_tx, main_rx) = mpsc::channel::<Vec<(Mat4, Vec3, Vec3)>>();
+	let (main_tx, physics_rx) = mpsc::channel::<Vec<(Mat4, Vec3, Vec3)>>();
+	
+	let (mut objects, vertex_buffers, index_buffers) = crate::scene::initialize_scene(&display);
+	let objects_physics = objects.clone();
+	
+	let _physics_thread = std::thread::spawn(move || {
+		let mut objects = objects_physics;
+		
+		loop {
+			let start_time = Instant::now();
+			
+			if run {
+				let mut dynamic_states = None;
+				loop {
+					match physics_rx.try_recv() {
+						Ok(states) => dynamic_states = Some(states),
+						Err(TryRecvError::Empty) => break,
+						Err(TryRecvError::Disconnected) => panic!()
+					}
+				}
+				
+				if let Some(dynamic_states) = dynamic_states {
+					for i in 0..objects.len() {
+						objects[i].set_dynamic_state(dynamic_states[i]);
+					}
+				}
+				
+				
+				let dt = 1.0 / TARGET_TPS;
+				
+				for i in 0..objects.len() {
+					objects[i].velocity += Vec3(0.0, -g * dt, 0.0);
+				}
+				objects[1].velocity = Vec3(0.0, 0.0, 0.0);
+				
+				
+				crate::physics::run(&mut objects, dt);
+				
+				physics_tx.send(objects.iter().map(Object::get_dynamic_state).collect::<Vec<_>>()).unwrap();
+			}
+			
+			thread::sleep(Duration::from_secs_f32(TARGET_TPS).checked_sub(Instant::now().duration_since(start_time)).unwrap_or(Duration::ZERO));
+		}
+	});
 	
 	
 	
@@ -127,7 +178,8 @@ fn main() {
 							VirtualKeyCode::Slash => if state { dummy = 0.0; }
 							
 							VirtualKeyCode::R => if state {
-								objects = crate::scene::initialize_scene(&display);
+								objects = crate::scene::initialize_scene(&display).0;
+								main_tx.send(objects.iter().map(Object::get_dynamic_state).collect::<Vec<_>>()).unwrap();
 							}
 							
 							VirtualKeyCode::Escape => if state && capture {
@@ -176,8 +228,8 @@ fn main() {
 			}
 			Event::RedrawRequested(_) => {
 				let dt = {
-					let now = std::time::SystemTime::now();
-					let dt = now.duration_since(previous_frame_time).unwrap().as_secs_f32();
+					let now = std::time::Instant::now();
+					let dt = now.duration_since(previous_frame_time).as_secs_f32();
 					previous_frame_time = now;
 					dt
 				};
@@ -214,23 +266,24 @@ fn main() {
 				if down { camera.vertical_angle -= look_sensitivity }
 				
 				
-				
-				if run {
-					let dt = 1.0 / 60.0;//f32::min(dt, 0.02);
-					
-					for i in 0..objects.len() {
-						objects[i].velocity += Vec3(0.0, -g * dt, 0.0);
+				let mut dynamic_states = None;
+				loop {
+					match main_rx.try_recv() {
+						Ok(states) => dynamic_states = Some(states),
+						Err(TryRecvError::Empty) => break,
+						Err(TryRecvError::Disconnected) => panic!()
 					}
-					objects[1].velocity = Vec3(0.0, 0.0, 0.0);
-					
-					crate::physics::run(&mut objects, dt);
+				}
+				
+				if let Some(dynamic_states) = dynamic_states {
+					for i in 0..objects.len() {
+						objects[i].set_dynamic_state(dynamic_states[i]);
+					}
 				}
 				
 				
-				let light_direction = Vec3(f32::cos(dummy), 2.0, f32::sin(dummy)).normalize();
-				renderer.shadowmap.set_up_transform(light_direction);
 				
-				renderer.render(&display, &camera, &objects, light_direction, do_post_process, show_shadowmap, dummy);
+				renderer.render(&display, &camera, &objects, &vertex_buffers, &index_buffers, do_post_process, show_shadowmap, dummy);
 				
 			}
 			_ => ()

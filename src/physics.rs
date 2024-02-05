@@ -7,7 +7,7 @@ pub fn run(objects: &mut [Object], dt: f32) {
 	while dt_remaining > 0.0 {
 		
 		let new_transforms = (0..objects.len()).map(|i| objects[i].future_transform(dt_remaining)).collect::<Vec<Mat4>>();
-		let transformed_vertices = (0..objects.len()).map(|i| objects[i].vertex_buffer.read().unwrap().iter().map(|v| (v.apply_transform(&objects[i].transform), v.apply_transform(&new_transforms[i]))).collect::<Vec<(Vec3, Vec3)>>()).collect::<Vec<Vec<(Vec3, Vec3)>>>();
+		let transformed_vertices = (0..objects.len()).map(|i| objects[i].vertices.iter().map(|v| (v.apply_transform(&objects[i].transform), v.apply_transform(&new_transforms[i]))).collect::<Vec<(Vec3, Vec3)>>()).collect::<Vec<Vec<(Vec3, Vec3)>>>();
 		
 		for i in 0..objects.len() { for j in 0..objects.len() {
 			if i == j { continue; }
@@ -145,12 +145,12 @@ pub fn run(objects: &mut [Object], dt: f32) {
 			dt_remaining -= t_step;
 			
 			
-			let position = objects[i].vertex_buffer.read().unwrap().get(k).unwrap().apply_transform(&objects[i].transform);
+			let position = objects[i].vertices[k].apply_transform(&objects[i].transform);
 			
 			let (a_index, b_index, c_index) = objects[j].indices[l];
-			let a = *objects[j].vertex_buffer.read().unwrap().get(a_index as usize).unwrap();
-			let b = *objects[j].vertex_buffer.read().unwrap().get(b_index as usize).unwrap();
-			let c = *objects[j].vertex_buffer.read().unwrap().get(c_index as usize).unwrap();
+			let a = objects[j].vertices[a_index as usize];
+			let b = objects[j].vertices[b_index as usize];
+			let c = objects[j].vertices[c_index as usize];
 			let normal = (b - a).cross(c - a).apply_transform(&objects[j].transform.set_position(Vec3(0.0, 0.0, 0.0))).normalize();
 			
 			collide(objects, i, j, position, normal);

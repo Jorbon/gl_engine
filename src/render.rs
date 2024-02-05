@@ -116,14 +116,17 @@ impl Renderer {
 	}
 	
 	
-	pub fn render(&self, display: &Display, camera: &Camera, objects: &[Object], light_direction: Vec3, do_post_process: bool, show_shadowmap: bool, dummy: f32) {
+	pub fn render(&mut self, display: &Display, camera: &Camera, objects: &[Object], vertex_buffers: &[VertexBuffer<Vec3>], index_buffers: &[IndexBuffer<u16>], do_post_process: bool, show_shadowmap: bool, dummy: f32) {
+		
+		let light_direction = Vec3(f32::cos(dummy), 2.0, f32::sin(dummy)).normalize();
+		self.shadowmap.set_up_transform(light_direction);
 		
 		let mut target = SimpleFrameBuffer::depth_only(display, &self.shadowmap.texture).unwrap();
 		target.clear_depth(1.0);
-		for object in objects {
-			target.draw(&object.vertex_buffer, &object.index_buffer, &self.shadowmap_program, &uniform! {
+		for i in 0..objects.len() {
+			target.draw(&vertex_buffers[i], &index_buffers[i], &self.shadowmap_program, &uniform! {
 				shadowmap_transform: self.shadowmap.transform.0,
-				model_transform: object.transform.0
+				model_transform: objects[i].transform.0
 			}, &DrawParameters {
 				depth: Depth {
 					test: DepthTest::IfLess,
@@ -149,11 +152,11 @@ impl Renderer {
 		
 		
 		
-		for object in objects {
+		for i in 0..objects.len() {
 			let uniforms = uniform! {
 				camera_location: (camera.position.0, camera.position.1, camera.position.2),
 				camera_transform: camera.get_transform().0,
-				model_transform: object.transform.0,
+				model_transform: objects[i].transform.0,
 				perspective_matrix: [
 					[-self.f * aspect_ratio, 0.0, 0.0, 0.0],
 					[0.0, self.f, 0.0, 0.0],
@@ -173,7 +176,7 @@ impl Renderer {
 				dummy: dummy
 			};
 			
-			target.draw(&object.vertex_buffer, &object.index_buffer, &self.main_program, &uniforms, &DrawParameters {
+			target.draw(&vertex_buffers[i], &index_buffers[i], &self.main_program, &uniforms, &DrawParameters {
 				depth: Depth {
 					test: DepthTest::IfLess,
 					write: true,

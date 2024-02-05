@@ -3,19 +3,18 @@ use glium::{index::PrimitiveType, Display, IndexBuffer, VertexBuffer};
 use crate::math_structs::{Mat4, Vec3};
 
 
+#[derive(Clone)]
 pub struct Object {
-	pub vertex_buffer: VertexBuffer<Vec3>,
-	pub index_buffer: IndexBuffer<u16>,
+	pub vertices: Box<[Vec3]>,
 	pub indices: Box<[(u16, u16, u16)]>,
 	pub edges: Box<[(u16, u16)]>,
 	pub transform: Mat4,
-	/// The velocity of the object in 3D space.
 	pub velocity: Vec3,
 	pub angular_velocity: Vec3,
 }
 
 impl Object {
-	pub fn new(display: &Display, vertices: &[Vec3], indices: &[(u16, u16, u16)]) -> Self {
+	pub fn new_with_buffers(display: &Display, vertices: &[Vec3], indices: &[(u16, u16, u16)]) -> (Self, VertexBuffer<Vec3>, IndexBuffer<u16>) {
 		let vertex_buffer = VertexBuffer::new(display, &vertices).unwrap(); // might switch to dynamic later
 		let index_buffer = IndexBuffer::new(display, PrimitiveType::TrianglesList, unsafe {
 			core::slice::from_raw_parts(indices.as_ptr() as *const u16, indices.len() * 3)
@@ -38,16 +37,26 @@ impl Object {
 			edges.insert((b, c));
 		}
 		
-		Self {
-			vertex_buffer,
-			index_buffer,
+		(Self {
+			vertices: vertices.to_vec().into_boxed_slice(),
 			indices: indices.to_vec().into_boxed_slice(),
 			edges: edges.into_iter().collect::<Vec<(u16, u16)>>().into_boxed_slice(),
 			transform: Mat4::identity(),
 			velocity: Vec3(0.0, 0.0, 0.0),
 			angular_velocity: Vec3(0.0, 0.0, 0.0)
-		}
+		}, vertex_buffer, index_buffer)
 	}
+	
+	pub fn get_dynamic_state(&self) -> (Mat4, Vec3, Vec3) {
+		(self.transform, self.velocity, self.angular_velocity)
+	}
+	
+	pub fn set_dynamic_state(&mut self, (transform, velocity, angular_velocity): (Mat4, Vec3, Vec3)) {
+		self.transform = transform;
+		self.velocity = velocity;
+		self.angular_velocity = angular_velocity;
+	}
+	
 	pub fn future_transform(&self, dt: f32) -> Mat4 {
 		let new_position = self.transform.get_position() + self.velocity * dt;
 		let mut new_transform = self.transform;
