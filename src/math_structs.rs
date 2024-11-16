@@ -155,6 +155,7 @@ impl std::ops::Mul<f32> for Vec2 { type Output = Self; #[inline] fn mul(self, rh
 impl std::ops::MulAssign<f32> for Vec2 { #[inline] fn mul_assign(&mut self, rhs: f32) { *self = *self * rhs; } }
 impl std::ops::Div<f32> for Vec2 { type Output = Self; #[inline] fn div(self, rhs: f32) -> Self::Output { self * (1.0/rhs) } }
 impl std::ops::DivAssign<f32> for Vec2 { #[inline] fn div_assign(&mut self, rhs: f32) { *self = *self / rhs; } }
+impl std::ops::Mul<Vec2> for f32 { type Output = Vec2; #[inline] fn mul(self, rhs: Vec2) -> Self::Output { rhs * self } }
 
 impl std::ops::Add for Vec3 { type Output = Self; #[inline] fn add(self, rhs: Self) -> Self::Output { Self(self.0 + rhs.0, self.1 + rhs.1, self.2 + rhs.2) } }
 impl std::ops::AddAssign for Vec3 { #[inline] fn add_assign(&mut self, rhs: Self) { *self = *self + rhs; } }
@@ -165,6 +166,7 @@ impl std::ops::Mul<f32> for Vec3 { type Output = Self; #[inline] fn mul(self, rh
 impl std::ops::MulAssign<f32> for Vec3 { #[inline] fn mul_assign(&mut self, rhs: f32) { *self = *self * rhs; } }
 impl std::ops::Div<f32> for Vec3 { type Output = Self; #[inline] fn div(self, rhs: f32) -> Self::Output { self * (1.0/rhs) } }
 impl std::ops::DivAssign<f32> for Vec3 { #[inline] fn div_assign(&mut self, rhs: f32) { *self = *self / rhs; } }
+impl std::ops::Mul<Vec3> for f32 { type Output = Vec3; #[inline] fn mul(self, rhs: Vec3) -> Self::Output { rhs * self } }
 
 
 

@@ -65,4 +65,12 @@ impl Object {
 		}
 		new_transform.set_position(new_position)
 	}
+	
+	pub fn apply_impulse(&mut self, impulse: Vec3, location: Vec3) {
+		// todo: make this physically accurate
+		self.angular_velocity += location.cross(impulse) * 0.01;
+		self.velocity += impulse;
+		
+		dbg!(self.angular_velocity, self.velocity);
+	}
 }

@@ -212,7 +212,7 @@ impl Renderer {
 					wrap_function: (SamplerWrapFunction::Repeat, SamplerWrapFunction::Repeat, SamplerWrapFunction::Repeat),
 					.. Default::default()
 				}),
-				bayer_size: 48.0f32,
+				bayer_size: 32.0f32,
 				main_buffer: &self.main_buffer,
 				normals_buffer: &self.normals_buffer,
 				depth_buffer: &self.depth_buffer,

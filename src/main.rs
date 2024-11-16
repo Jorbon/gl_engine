@@ -54,7 +54,7 @@ pub fn get_latest_value<T>(rx: &Receiver<T>) -> Option<T> {
 }
 
 
-static TARGET_TPS: f32 = 5.0;
+static TARGET_TPS: f32 = 60.0;
 static TIMING_UPDATE_RATE: f32 = 1.0;
 
 

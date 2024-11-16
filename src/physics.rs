@@ -172,6 +172,14 @@ fn collide(objects: &mut [Object], i: usize, j: usize, p: Vec3, n: Vec3) {
 	let v1 = objects[i].velocity + objects[i].angular_velocity.cross(p - objects[i].transform.get_position());
 	let v2 = objects[j].velocity + objects[j].angular_velocity.cross(p - objects[j].transform.get_position());
 	
+	let relative_velocity = v2 - v1;
+	
+	let normal_velocity = n * n.dot(relative_velocity);
+	let perpendicular_velocity = relative_velocity - normal_velocity;
+	
+	objects[i].apply_impulse(2.0 * normal_velocity, p - objects[i].transform.get_position());
+	
+	
 	objects[i].velocity = -objects[i].velocity;
 	
 }
